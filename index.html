@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Викуша ловит вкусняшки</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: #1e1e24;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    #game-container {
+      width: 100%;
+      max-width: 420px;
+      height: 95vh;
+      max-height: 700px;
+      background: #2b2d42;
+      border-radius: 20px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      border: 3px solid #8d99ae;
+      overflow: hidden;
+    }
+    /* Шапка */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 18px;
+      background: #1f2030;
+      border-bottom: 2px solid #3d405b;
+      font-weight: bold;
+      font-size: 18px;
+    }
+    .lives { color: #e63946; font-size: 20px; }
+    .score { color: #ffd166; }
+
+    /* Игровое поле */
+    .playfield {
+      flex: 1;
+      position: relative;
+      background: radial-gradient(circle at center, #3d405b 0%, #1f2030 100%);
+      overflow: hidden;
+    }
+
+    /* Полочки / лотки (4 позиции) */
+    .tray {
+      position: absolute;
+      width: 110px;
+      height: 10px;
+      background: #8d99ae;
+      border-radius: 5px;
+    }
+    .tray.tl { top: 22%; left: 0; transform: rotate(15deg); }
+    .tray.bl { top: 58%; left: 0; transform: rotate(15deg); }
+    .tray.tr { top: 22%; right: 0; transform: rotate(-15deg); }
+    .tray.br { top: 58%; right: 0; transform: rotate(-15deg); }
+
+    /* Падающая еда */
+    .food-item {
+      position: absolute;
+      width: 42px;
+      height: 42px;
+      font-size: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.05s linear;
+      z-index: 10;
+    }
+    .food-item.fistashka {
+      background: #ffd166;
+      border-radius: 50%;
+      border: 2px solid #06d6a0;
+      box-shadow: 0 0 10px #06d6a0;
+    }
+
+    /* Персонаж (Викуша) */
+    .character-box {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 110px;
+      height: 130px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      transition: all 0.15s ease;
+    }
+    .avatar-wrapper {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 3px solid #ffd166;
+      overflow: hidden;
+      background: #4a4e69;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .avatar-wrapper img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .basket {
+      position: absolute;
+      font-size: 34px;
+      transition: all 0.15s;
+    }
+
+    /* Положения персонажа */
+    .pos-tl .basket { top: 0; left: -25px; transform: scaleX(-1); }
+    .pos-bl .basket { bottom: 10px; left: -25px; transform: scaleX(-1); }
+    .pos-tr .basket { top: 0; right: -25px; transform: scaleX(1); }
+    .pos-br .basket { bottom: 10px; right: -25px; transform: scaleX(1); }
+
+    .pos-tl .avatar-wrapper, .pos-bl .avatar-wrapper { transform: scaleX(-1); }
+    .pos-tr .avatar-wrapper, .pos-br .avatar-wrapper { transform: scaleX(1); }
+
+    /* Кнопки управления (4 зоны) */
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      height: 170px;
+      gap: 10px;
+      padding: 10px 15px;
+      background: #1f2030;
+      border-top: 2px solid #3d405b;
+    }
+    .ctrl-btn {
+      background: #4a4e69;
+      border: none;
+      color: #fff;
+      font-size: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px #22223b;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+    }
+    .ctrl-btn:active {
+      transform: translateY(3px);
+      box-shadow: 0 1px #22223b;
+      background: #ffd166;
+      color: #22223b;
+    }
+
+    /* Окно Game Over / Пасхалка */
+    .modal {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 20px;
+      text-align: center;
+    }
+    .modal.active { display: flex; }
+    .modal h2 { font-size: 28px; margin-bottom: 10px; color: #ffd166; }
+    .modal p { font-size: 18px; margin-bottom: 20px; }
+    .start-btn {
+      padding: 12px 28px;
+      font-size: 18px;
+      font-weight: bold;
+      color: #2b2d42;
+      background: #06d6a0;
+      border: none;
+      border-radius: 30px;
+      cursor: pointer;
+    }
+
+    /* Пасхалка с Фисташкой */
+    #fistashka-popup {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0);
+      background: #fff;
+      color: #111;
+      padding: 15px;
+      border-radius: 20px;
+      box-shadow: 0 0 25px #ffd166;
+      z-index: 40;
+      text-align: center;
+      transition: transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+      pointer-events: none;
+    }
+    #fistashka-popup.show {
+      transform: translate(-50%, -50%) scale(1);
+    }
+    #fistashka-popup img {
+      width: 130px;
+      height: 130px;
+      border-radius: 15px;
+      object-fit: cover;
+      margin-bottom: 8px;
+      border: 3px solid #06d6a0;
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-container">
+  <!-- Верхняя панель -->
+  <div class="header">
+    <div class="score">Очки: <span id="score-val">0</span></div>
+    <div class="lives" id="lives-val">❤️❤️❤️</div>
+  </div>
+
+  <!-- Поле -->
+  <div class="playfield" id="field">
+    <!-- Полки -->
+    <div class="tray tl"></div>
+    <div class="tray tr"></div>
+    <div class="tray bl"></div>
+    <div class="tray br"></div>
+
+    <!-- Викуша -->
+    <div class="character-box pos-tl" id="vikusha">
+      <div class="avatar-wrapper">
+        <img src="vikusha.png" alt="Викуша" onerror="this.src='https://api.dicebear.com/7.x/bottts/svg?seed=Vikusha';">
+      </div>
+      <div class="basket">🥣</div>
+    </div>
+
+    <!-- Всплывающая пасхалка -->
+    <div id="fistashka-popup">
+      <img src="fistashka.png" alt="Фисташка" onerror="this.src='https://api.dicebear.com/7.x/bottts/svg?seed=Fistashka';">
+      <div style="font-weight:bold; color:#06d6a0;">Пасхалка: Фисташка! +5 🎉</div>
+    </div>
+  </div>
+
+  <!-- Управление -->
+  <div class="controls">
+    <button class="ctrl-btn" onclick="setPos('tl')">↖ Верх-Лево</button>
+    <button class="ctrl-btn" onclick="setPos('tr')">Верх-Право ↗</button>
+    <button class="ctrl-btn" onclick="setPos('bl')">↙ Низ-Лево</button>
+    <button class="ctrl-btn" onclick="setPos('br')">Низ-Право ↘</button>
+  </div>
+
+  <!-- Экран Game Over -->
+  <div class="modal" id="game-over-modal">
+    <h2>Конец игры!</h2>
+    <p>Викуша собрала очков: <span id="final-score">0</span></p>
+    <button class="start-btn" onclick="restartGame()">Играть снова</button>
+  </div>
+</div>
+
+<script>
+  // Интеграция Telegram WebApp
+  const tg = window.Telegram?.WebApp;
+  if (tg) {
+    tg.ready();
+    tg.expand();
+  }
+
+  function triggerHaptic(type = 'impact') {
+    if (tg?.HapticFeedback) {
+      if (type === 'impact') tg.HapticFeedback.impactOccurred('medium');
+      if (type === 'error') tg.HapticFeedback.notificationOccurred('error');
+      if (type === 'success') tg.HapticFeedback.notificationOccurred('success');
+    }
+  }
+
+  // Звуки на Web Audio API
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  function playTone(freq, type, duration) {
+    try {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    } catch(e){}
+  }
+
+  // Состояния игры
+  let score = 0;
+  let lives = 3;
+  let currentPos = 'tl';
+  let isGameOver = false;
+  let speed = 4; // скорость скатывания
+  let spawnInterval = 1600; // частота появления блюд
+  let activeItems = [];
+  let gameLoopId, spawnTimerId;
+
+  // Виды блюд
+  const FOOD_TYPES = [
+    { name: 'Солянка', icon: '🍲' },
+    { name: 'Салат', icon: '🥗' },
+    { name: 'Нарезка', icon: '🥓' },
+    { name: 'Сырная закуска', icon: '🧀' },
+    { name: 'Креветки', icon: '🍤' },
+    { name: 'Фисташка', icon: '🥜', isFistashka: true } // редкая пасхалка
+  ];
+
+  // Траектории полок (процентное смещение по X и Y)
+  const LANES = {
+    tl: { startX: 0, startY: 20, endX: 25, endY: 28 },
+    bl: { startX: 0, startY: 56, endX: 25, endY: 64 },
+    tr: { startX: 100, startY: 20, endX: 75, endY: 28 },
+    br: { startX: 100, startY: 56, endX: 75, endY: 64 }
+  };
+
+  function setPos(pos) {
+    if (isGameOver) return;
+    currentPos = pos;
+    const vik = document.getElementById('vikusha');
+    vik.className = `character-box pos-${pos}`;
+    triggerHaptic('impact');
+    playTone(350, 'triangle', 0.05);
+  }
+
+  function spawnFood() {
+    if (isGameOver) return;
+
+    // Случайная позиция из 4
+    const lanesKeys = ['tl', 'bl', 'tr', 'br'];
+    const lane = lanesKeys[Math.floor(Math.random() * lanesKeys.length)];
+
+    // 10% шанс появления пасхалки с Фисташкой
+    const isSpecial = Math.random() < 0.12;
+    const food = isSpecial ? FOOD_TYPES[5] : FOOD_TYPES[Math.floor(Math.random() * 5)];
+
+    const field = document.getElementById('field');
+    const el = document.createElement('div');
+    el.className = 'food-item' + (food.isFistashka ? ' fistashka' : '');
+    el.textContent = food.icon;
+    field.appendChild(el);
+
+    activeItems.push({
+      el,
+      lane,
+      progress: 0, // 0..1
+      isFistashka: food.isFistashka
+    });
+
+    // Постепенно ускоряем появление
+    clearTimeout(spawnTimerId);
+    spawnInterval = Math.max(700, spawnInterval - 10);
+    spawnTimerId = setTimeout(spawnFood, spawnInterval);
+  }
+
+  function showFistashkaEasterEgg() {
+    const pop = document.getElementById('fistashka-popup');
+    pop.classList.add('show');
+    triggerHaptic('success');
+    playTone(880, 'sine', 0.25);
+    setTimeout(() => {
+      pop.classList.remove('show');
+    }, 1300);
+  }
+
+  function update() {
+    if (isGameOver) return;
+
+    for (let i = activeItems.length - 1; i >= 0; i--) {
+      const item = activeItems[i];
+      item.progress += 0.008 * (speed / 3);
+
+      const laneCfg = LANES[item.lane];
+      const curX = laneCfg.startX + (laneCfg.endX - laneCfg.startX) * item.progress;
+      const curY = laneCfg.startY + (laneCfg.endY - laneCfg.startY) * item.progress;
+
+      item.el.style.left = `calc(${curX}% - 21px)`;
+      item.el.style.top = `calc(${curY}% - 21px)`;
+
+      // Достиг края полки
+      if (item.progress >= 1) {
+        // Проверяем: поймала ли Викуша?
+        if (currentPos === item.lane) {
+          // Поймано!
+          if (item.isFistashka) {
+            score += 5;
+            showFistashkaEasterEgg();
+          } else {
+            score += 1;
+            playTone(550, 'sine', 0.08);
+            triggerHaptic('impact');
+          }
+          document.getElementById('score-val').textContent = score;
+        } else {
+          // Упало мимо!
+          lives--;
+          triggerHaptic('error');
+          playTone(180, 'sawtooth', 0.2);
+          updateLivesDisplay();
+
+          if (lives <= 0) {
+            endGame();
+            item.el.remove();
+            activeItems.splice(i, 1);
+            return;
+          }
+        }
+        item.el.remove();
+        activeItems.splice(i, 1);
+      }
+    }
+
+    // Небольшое ускорение
+    speed = Math.min(10, 4 + score * 0.08);
+    gameLoopId = requestAnimationFrame(update);
+  }
+
+  function updateLivesDisplay() {
+    let hearts = '';
+    for (let i = 0; i < lives; i++) hearts += '❤️';
+    for (let i = lives; i < 3; i++) hearts += '💔';
+    document.getElementById('lives-val').textContent = hearts;
+  }
+
+  function endGame() {
+    isGameOver = true;
+    cancelAnimationFrame(gameLoopId);
+    clearTimeout(spawnTimerId);
+    document.getElementById('final-score').textContent = score;
+    document.getElementById('game-over-modal').classList.add('active');
+  }
+
+  function restartGame() {
+    activeItems.forEach(it => it.el.remove());
+    activeItems = [];
+    score = 0;
+    lives = 3;
+    speed = 4;
+    spawnInterval = 1600;
+    isGameOver = false;
+
+    document.getElementById('score-val').textContent = '0';
+    updateLivesDisplay();
+    document.getElementById('game-over-modal').classList.remove('active');
+
+    setPos('tl');
+    spawnFood();
+    gameLoopId = requestAnimationFrame(update);
+  }
+
+  // Старт при первой загрузке
+  window.onload = () => {
+    restartGame();
+  };
+</script>
+</body>
+</html>
